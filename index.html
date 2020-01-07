@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Tautulli</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description" content="">
+        <meta name="author" content="">
+    </head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <form>
+            <a class="btn btn-dark" id="sign-in-plex" href="#" role="button">Sign In with Plex</a>
+        </form>
+    </div>
+</div>
+<script src="jquery-2.1.4.min.js"></script>
+<script>
+    $(document).ready(function() {
+    var authenticated = false;
+    
+    function OAuthPreFunction() {
+        $("#pms_token").val('');
+        $("#pms-token-status").html('<i class="fa fa-refresh fa-spin"></i>&nbsp; Waiting for authentication...').fadeIn('fast');
+    }
+    function OAuthSuccessCallback(authToken) {
+        $("#pms_token").val(authToken);
+        $("#pms-token-status").html('<i class="fa fa-check"></i>&nbsp; Authentication successful.').fadeIn('fast');
+        authenticated = true;
+    }
+    function OAuthErrorCallback() {
+        $("#pms-token-status").html('<i class="fa fa-exclamation-circle"></i>&nbsp; Error communicating with Plex.tv.').fadeIn('fast');
+    }
+
+    $('#sign-in-plex').click(function() {
+        PlexOAuth(OAuthSuccessCallback, OAuthErrorCallback, OAuthPreFunction);
+    });
+});
+</script>
+<script>
+
+var p = {
+    name: 'Unknown',
+    version: 'Unknown',
+    os: 'Unknown'
+};
+if (typeof platform !== 'undefined') {
+    p.name = platform.name;
+    p.version = platform.version;
+    p.os = platform.os.toString();
+}
+
+function PopupCenter(url, title, w, h) {
+    // Fixes dual-screen position  Most browsers Firefox
+    var dualScreenLeft = window.screenLeft != undefined ? window.screenLeft : window.screenX;
+    var dualScreenTop = window.screenTop != undefined ? window.screenTop : window.screenY;
+
+    var width = window.innerWidth ? window.innerWidth : document.documentElement.clientWidth ? document.documentElement.clientWidth : screen.width;
+    var height = window.innerHeight ? window.innerHeight : document.documentElement.clientHeight ? document.documentElement.clientHeight : screen.height;
+
+    var left = ((width / 2) - (w / 2)) + dualScreenLeft;
+    var top = ((height / 2) - (h / 2)) + dualScreenTop;
+    var newWindow = window.open(url, title, 'scrollbars=yes, width=' + w + ', height=' + h + ', top=' + top + ', left=' + left);
+    
+    // Puts focus on the newWindow
+    return newWindow;
+}
+
+function getPlexHeaders() {
+    return {
+        'Accept': 'application/json',
+        'X-Plex-Product': 'Tautulli',
+        'X-Plex-Version': 'Plex OAuth',
+        'X-Plex-Client-Identifier': false,
+        'X-Plex-Platform': p.name,
+        'X-Plex-Platform-Version': p.version,
+        'X-Plex-Model': 'Plex OAuth',
+        'X-Plex-Device': p.os,
+        'X-Plex-Device-Name': p.name,
+        'X-Plex-Device-Screen-Resolution': window.screen.width + 'x' + window.screen.height,
+        'X-Plex-Language': 'en'
+    };
+}
+
+var plex_oauth_window = null;
+function closePlexOAuthWindow() {
+    if (plex_oauth_window) {
+        plex_oauth_window.close();
+    }
+}
+
+ function getPlexOAuthPin() {
+    var x_plex_headers = getPlexHeaders();
+    var deferred = $.Deferred();
+    $.ajax({
+        url: 'https://plex.tv/api/v2/pins?strong=true',
+        type: 'POST',
+        headers: x_plex_headers,
+        success: function(data) {
+            deferred.resolve({pin: data.id, code: data.code});
+        },
+        error: function() {
+            closePlexOAuthWindow();
+            deferred.reject();
+        }
+    });
+    return deferred;
+};
+
+var polling = null;
+
+function PlexOAuth(success, error, pre) {
+    if (typeof pre === "function") {
+        pre()
+    }
+    closePlexOAuthWindow();
+    plex_oauth_window = PopupCenter('', 'Plex-OAuth', 600, 700);
+    getPlexOAuthPin().then(function (data) {
+        var oauth_params = {
+            'clientID': false,
+            'context[device][product]': 'Tautulli',
+            'context[device][version]': 'Plex OAuth',
+            'context[device][platform]': 'p.name',
+            'context[device][platformVersion]': 'p.version',
+            'context[device][device]': 'p.os',
+            'context[device][deviceName]': 'p.name',
+            'context[device][model]': 'Plex OAuth',
+            'context[device][screenResolution]': window.screen.width + 'x' + window.screen.height,
+            'context[device][layout]': 'desktop',
+            'code': data.code
+        }
+        plex_oauth_window.location = 'https://app.plex.tv/auth/#!?' + encodeData(oauth_params);
+        
+        closePlexOAuthWindow();
+        polling = data.pin;
+        }, function () {
+        closePlexOAuthWindow();
+        if (typeof error === "function") {
+            error()
+        }
+    });
+}
+
+function encodeData(data) {
+    return Object.keys(data).map(function(key) {
+        return [key, data[key]].map(encodeURIComponent).join("=");
+    }).join("&");
+}
+
+</script>
+</body>
+</html>
